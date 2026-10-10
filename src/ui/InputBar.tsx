@@ -31,6 +31,7 @@ export function InputBar() {
   const rec = useRef<SR | null>(null);
   const heard = useRef('');
   const failed = useRef(false);
+  const silentEnds = useRef(0);
 
   useEffect(() => { if (focusSeq) ref.current?.focus(); }, [focusSeq]);
 
@@ -65,7 +66,12 @@ export function InputBar() {
       };
       r.onend = () => {
         setListening(false);
-        if (!failed.current && heard.current.trim()) submitText(heard.current);
+        if (failed.current) return;
+        if (heard.current.trim()) { silentEnds.current = 0; submitText(heard.current); return; }
+        // ended without hearing anything and without an error (common in iPhone Home Screen apps)
+        silentEnds.current++;
+        if (silentEnds.current >= 2) fallback('The mic button isn’t picking you up on this phone. Use the mic on the keyboard instead: tap “Speak or type”, then the keyboard mic.', true);
+        else toast('Didn’t hear anything. Tap the mic, speak right away, then pause.');
       };
       rec.current = r;
       r.start();

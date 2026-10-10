@@ -9,24 +9,27 @@ export const ttsSupported = () => !!synth();
 
 let speaking = false;
 let unlocked = false;
+let lastError = '';
+export const lastSpeechError = () => lastError;
 const subs = new Set<() => void>();
 const emit = () => subs.forEach(f => f());
 export const useSpeaking = () => useSyncExternalStore(cb => { subs.add(cb); return () => subs.delete(cb); }, () => speaking);
 export const isUnlocked = () => unlocked;
 
-/** iOS only allows speech after a user gesture; speak a silent utterance on the first tap. */
+/**
+ * iOS only lets a page speak after a real tap (touchend/click count, pointerdown does not).
+ * Speak a short silent utterance on the first such tap to unlock speech for later replies.
+ */
 export function unlockOnFirstGesture() {
   const s = synth();
   if (!s || unlocked) return;
   const go = () => {
     if (unlocked) return;
-    try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; s.speak(u); } catch { /* ignore */ }
+    try { const u = new SpeechSynthesisUtterance('.'); u.volume = 0; u.rate = 2; s.speak(u); s.getVoices(); } catch { /* ignore */ }
     unlocked = true;
-    window.removeEventListener('pointerdown', go, true);
-    window.removeEventListener('keydown', go, true);
+    for (const ev of ['touchend', 'click', 'keydown']) window.removeEventListener(ev, go, true);
   };
-  window.addEventListener('pointerdown', go, true);
-  window.addEventListener('keydown', go, true);
+  for (const ev of ['touchend', 'click', 'keydown']) window.addEventListener(ev, go, true);
 }
 
 /** English voices, British first (closest to a JARVIS feel). */
@@ -37,9 +40,9 @@ export function listVoices(): SpeechSynthesisVoice[] {
   return s.getVoices().filter(v => v.lang.toLowerCase().startsWith('en')).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
+/** Only force a voice when the user picked one; otherwise let the device choose for en-GB. */
 function pickVoice(uri: string): SpeechSynthesisVoice | undefined {
-  const vs = listVoices();
-  return vs.find(v => v.voiceURI === uri) ?? vs[0];
+  return uri ? listVoices().find(v => v.voiceURI === uri) : undefined;
 }
 
 /** Make text sound right when spoken. */
@@ -61,20 +64,25 @@ export function speechText(t: string): string {
 export function speak(text: string, cfg: VoiceCfg): Promise<void> {
   const s = synth();
   if (!s || !cfg.enabled || !text.trim()) return Promise.resolve();
-  s.cancel();
+  // cancel() right before speak() can silently break speech on iOS; only cancel if needed
+  if (s.speaking || s.pending) s.cancel();
+  if (s.paused) s.resume();
   // short chunks: some engines cut off long utterances
   const parts = speechText(text).match(/[^.!?]+[.!?]*/g)?.map(p => p.trim()).filter(Boolean) ?? [];
   const voice = pickVoice(cfg.voiceURI);
   speaking = true; emit();
   return new Promise(resolve => {
     let left = parts.length;
-    const done = () => { if (--left <= 0) { speaking = false; emit(); resolve(); } };
+    const finish = () => { speaking = false; emit(); resolve(); };
+    const done = () => { if (--left <= 0) finish(); };
+    // iOS sometimes never fires onend; don't stay stuck in "speaking"
+    setTimeout(() => { if (speaking && !s.speaking && !s.pending) finish(); }, 3000 + text.length * 120);
     for (const p of parts) {
       const u = new SpeechSynthesisUtterance(p);
       if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-GB';
       u.rate = cfg.rate || 1;
       u.onend = done;
-      u.onerror = done;
+      u.onerror = e => { lastError = (e as SpeechSynthesisErrorEvent).error ?? 'error'; done(); };
       s.speak(u);
     }
     if (!parts.length) done();
