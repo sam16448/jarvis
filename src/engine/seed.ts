@@ -43,6 +43,8 @@ export function defaultSettings(): Settings {
     wrapupTime: '21:45',
     dailyWorkCapH: 6,
     llm: { provider: 'none', key: '', model: '' },
+    voice: { enabled: true, voiceURI: '', rate: 1, address: 'boss', aiBriefs: true },
+    weather: { place: '' },
   };
 }
 

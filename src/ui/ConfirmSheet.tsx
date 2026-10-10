@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import type { ConflictOption, DiffLine } from '../engine/types';
 import { applyPending, dismiss, useApp } from '../store/store';
 import { Sheet } from './common';
-import { requestEdit, answerQuestion, submitText } from './bus';
+import { requestEdit, answerQuestion, isNo, isYes, replyToCard } from './bus';
+import { address, say, stopSpeaking } from '../voice';
+import { cancelLine, doneLine } from '../voice/persona';
 
 const SYM: Record<DiffLine['change'], string> = { add: '+', remove: '-', move: '→', update: '•' };
 
@@ -34,7 +36,7 @@ export function ConfirmSheet() {
   useEffect(() => { setChoices(pending?.choices ?? {}); setReply(''); }, [pending]);
   if (!pending) return null;
   const r = pending.result;
-  const close = () => { setChoices({}); setAnswer(''); dismiss(); };
+  const close = () => { setChoices({}); setAnswer(''); stopSpeaking(); dismiss(); };
 
   if (r.type === 'answer') {
     return (
@@ -78,6 +80,14 @@ export function ConfirmSheet() {
     await applyPending(real);
     setBusy(false);
     setChoices({});
+    void say(doneLine(address()));
+  };
+  const onReply = (t: string) => {
+    if (isYes(t)) {
+      if (unresolved.length) void say(`Which option for ${unresolved[0].title}, ${address()}? Say a, b, c or d.`);
+      else void apply();
+    } else if (isNo(t)) { close(); void say(cancelLine()); }
+    else void replyToCard(t);
   };
 
   return (
@@ -106,14 +116,12 @@ export function ConfirmSheet() {
         </section>
       ))}
 
-      {r.conflicts.length > 0 && (
-        <form className="row" onSubmit={e => { e.preventDefault(); if (reply.trim()) { const t = reply; setReply(''); submitText(t); } }}>
-          <label htmlFor="reply" className="sr-only">Reply</label>
-          <input id="reply" className="grow" name="reply" value={reply} onChange={e => setReply(e.target.value)} placeholder="Or say it: “push my sleep”…" autoComplete="off" enterKeyHint="send"
-            style={{ minHeight: 44, padding: '0 14px', borderRadius: 22, border: '1px solid var(--line)', background: 'var(--surface)', fontSize: 17 }} />
-          <button className="btn" disabled={!reply.trim()}>Send</button>
-        </form>
-      )}
+      <form className="row" onSubmit={e => { e.preventDefault(); if (reply.trim()) { const t = reply; setReply(''); onReply(t); } }}>
+        <label htmlFor="reply" className="sr-only">Reply</label>
+        <input id="reply" className="grow" name="reply" value={reply} onChange={e => setReply(e.target.value)} placeholder={r.conflicts.length ? 'Say an option, e.g. “push my sleep”…' : 'Say “yes”, “no”, or a change…'} autoComplete="off" enterKeyHint="send"
+          style={{ minHeight: 44, padding: '0 14px', borderRadius: 22, border: '1px solid var(--line)', background: 'var(--surface)', fontSize: 17 }} />
+        <button className="btn" disabled={!reply.trim()}>Send</button>
+      </form>
 
       <section className="stack">
         <h3>What will change</h3>

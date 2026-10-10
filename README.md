@@ -81,6 +81,13 @@ The default model is `gemini-flash-latest`; change it in Settings if Google rena
 
 The key is stored only on your phone and is left out of backup exports. Rules run first; the AI is only asked when the rules are unsure, and any AI error falls back to the offline parser.
 
+## Jarvis talks back
+
+- After each command Jarvis answers out loud ("Right away, boss. ... Shall I go ahead?"). Reply in the card's box with **yes** / **no** or a change, by typing or with the keyboard mic.
+- The **morning brief** and **night wrap-up** have **Read it to me**. With an AI key and *Witty AI briefings* on, Gemini writes them in a JARVIS style from your real schedule (it is told never to invent anything), once per day; otherwise a standard briefing is read. iPhone only allows speech after a tap, so the brief that opens by itself waits for the button.
+- **Weather** for the brief comes from the free Open-Meteo service: set a city or tap *Use My Location* in Settings. Only the city or a rounded location is sent.
+- **Settings > Voice**: on/off, what Jarvis calls you, which voice, speed. For a more natural voice, download one on the iPhone: Settings > Accessibility > Spoken Content > Voices > English (a British "Enhanced" voice suits Jarvis).
+
 ## 20 things you can say
 
 1. `I need to do my History essay, due Thursday.`

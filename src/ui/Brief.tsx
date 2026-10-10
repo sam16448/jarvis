@@ -1,5 +1,9 @@
-import { CheckCircle, Circle } from '@phosphor-icons/react';
-import { useMemo, useState } from 'react';
+import { CheckCircle, Circle, Play, Stop } from '@phosphor-icons/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getBriefing, say, stopSpeaking, todaysWeather } from '../voice';
+import { isUnlocked, ttsSupported, useSpeaking } from '../voice/speak';
+import { weatherLine, type Weather } from '../voice/weather';
+import type { Briefing } from '../voice/briefing';
 import { dayLoad, examStats, freeToday, latestSafeBedtime, overload, sleepWeek, studyBySubject, taskRisk, topPriorities } from '../engine/metrics';
 import { wrapUp } from '../engine/plan';
 import { addDays, at, clock, dur, range, shortDate, toT, weekday } from '../engine/time';
@@ -13,6 +17,47 @@ const agenda = (st: State, d: string) => timeline(st, d, d).filter(o => o.date =
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="stack" style={{ gap: 6 }}><h3>{title}</h3>{children}</section>;
+}
+
+/** "Jarvis says" card: generates (AI or template), shows and reads the briefing. */
+function JarvisVoice({ kind }: { kind: 'morning' | 'night' }) {
+  const [b, setB] = useState<Briefing | null>(null);
+  const [busy, setBusy] = useState(false);
+  const speaking = useSpeaking();
+  const started = useRef(false);
+  const play = async (fresh = false) => {
+    setBusy(true);
+    try {
+      const x = await getBriefing(kind, fresh);
+      setB(x);
+      setBusy(false);
+      await say(x.text);
+    } finally { setBusy(false); }
+  };
+  // read automatically when the sheet was opened by a tap (iOS needs a gesture first)
+  useEffect(() => {
+    if (!started.current && isUnlocked()) { started.current = true; void play(); }
+    return () => stopSpeaking();
+  }, []); // eslint-disable-line
+  return (
+    <section className="card stack" aria-label="Jarvis briefing" style={{ gap: 10 }}>
+      <div className="row wrap">
+        {speaking
+          ? <button className="btn primary grow big" onClick={stopSpeaking}><Stop size={20} weight="fill" aria-hidden="true" />Stop</button>
+          : <button className="btn primary grow big" onClick={() => play()} disabled={busy}><Play size={20} weight="fill" aria-hidden="true" />{busy ? 'Thinking…' : b ? 'Read it again' : 'Read it to me'}</button>}
+        {b && !speaking && <button className="btn ghost" onClick={() => play(true)} disabled={busy}>New take</button>}
+      </div>
+      {b && <p className="small" style={{ lineHeight: 1.5 }}>{b.text}</p>}
+      {b?.note && <p className="tiny muted">{b.note}</p>}
+      {!ttsSupported() && <p className="tiny muted">This browser can't speak, so the briefing is shown as text.</p>}
+    </section>
+  );
+}
+
+function WeatherLine() {
+  const [w, setW] = useState<Weather | undefined>();
+  useEffect(() => { void todaysWeather().then(setW); }, []);
+  return w ? <p className="small">{weatherLine(w)}</p> : null;
 }
 
 export function BriefSheet({ onClose }: { onClose: () => void }) {
@@ -36,6 +81,8 @@ export function BriefSheet({ onClose }: { onClose: () => void }) {
   return (
     <Sheet onClose={onClose} label="Morning brief">
       <h2>Good morning. {shortDate(d)}</h2>
+      <JarvisVoice kind="morning" />
+      <WeatherLine />
       {warning && <div className="banner warn" role="status"><p className="small">{warning}</p></div>}
       <Section title="Today at a glance">
         {items.length ? (
@@ -53,7 +100,7 @@ export function BriefSheet({ onClose }: { onClose: () => void }) {
           {due.map(t => <p key={t.id} className="row small"><span className="grow">{t.title}, {shortDate(t.deadline!.slice(0, 10))} {clock(t.deadline!)}</span><Pill risk={taskRisk(s, t, nowT)} /></p>)}
         </Section>
       )}
-      <Section title="Exams">
+      {exams.length > 0 && <Section title="Exams">
         <div className="list">
           {exams.map(e => (
             <div key={e.exam.id} className="li compact small num">
@@ -62,7 +109,7 @@ export function BriefSheet({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
-      </Section>
+      </Section>}
       {neededToday.length > 0 && (
         <Section title="Study today to stay on track">
           <p className="small">{neededToday.map(e => `${e.exam.subject} ${dur(e.perDayNeededMin)}`).join(', ')}</p>
@@ -126,6 +173,7 @@ export function WrapupSheet({ onClose }: { onClose: () => void }) {
   return (
     <Sheet onClose={onClose} label="Night wrap-up">
       <h2>Night wrap-up</h2>
+      <JarvisVoice kind="night" />
       <Section title="What got done?">
         {items.length ? (
           <div className="list">

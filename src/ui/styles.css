@@ -131,6 +131,9 @@ main { flex: 1; padding: 12px var(--gutter) calc(var(--bar-h) + var(--safe-b) + 
 .btn.danger { color: var(--bad); }
 .btn.big { min-height: 52px; font-size: 17px; }
 .btn.block { width: 100%; }
+.row > .btn { min-width: 0; }
+.row > .btn.grow { flex: 1 1 0; }
+.sheet > *, .card > * { min-width: 0; overflow-wrap: anywhere; }
 .btn[disabled] { opacity: 0.45; }
 .icon-btn {
   width: var(--tap); height: var(--tap); display: inline-flex; align-items: center; justify-content: center;
@@ -149,7 +152,9 @@ main { flex: 1; padding: 12px var(--gutter) calc(var(--bar-h) + var(--safe-b) + 
 .seg button { min-height: 38px; border: none; border-radius: 6px; background: transparent; color: var(--muted); font-weight: 600; font-size: 15px; }
 .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
 
-label.field { display: flex; flex-direction: column; gap: 6px; font-size: 15px; color: var(--muted); }
+label.field { display: flex; flex-direction: column; gap: 6px; font-size: 15px; color: var(--muted); min-width: 0; }
+.field input, .field select { width: 100%; min-width: 0; }
+html, body { max-width: 100%; }
 .field input, .field select, .field textarea {
   min-height: var(--tap); padding: 8px 12px; border-radius: var(--r-sm);
   border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 17px;
@@ -209,7 +214,7 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 15px; 
 .sheet {
   width: 100%; max-width: 640px; max-height: calc(100dvh - var(--safe-t) - 24px - var(--kb));
   margin-bottom: var(--kb);
-  overflow-y: auto; overscroll-behavior: contain;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
   background: var(--bg); border-top-left-radius: 16px; border-top-right-radius: 16px; border: 1px solid var(--line); border-bottom: none;
   padding: 8px var(--gutter) calc(var(--safe-b) + 16px);
   display: flex; flex-direction: column; gap: 14px;

@@ -8,20 +8,21 @@ export interface LLMProvider {
   label: string;
   defaultModel: string;
   keyUrl: string;
-  call(key: string, model: string, system: string, user: string, signal: AbortSignal): Promise<string>;
+  /** json=true asks for a JSON object; otherwise plain text. */
+  call(key: string, model: string, system: string, user: string, signal: AbortSignal, opts?: { json?: boolean; temperature?: number }): Promise<string>;
 }
 
 export const PROVIDERS: Record<'gemini' | 'groq', LLMProvider> = {
   gemini: {
     id: 'gemini', label: 'Google Gemini (free tier)', defaultModel: 'gemini-flash-latest', keyUrl: 'https://aistudio.google.com/apikey',
-    async call(key, model, system, user, signal) {
+    async call(key, model, system, user, signal, opts = { json: true }) {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST', signal,
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: 'user', parts: [{ text: user }] }],
-          generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+          generationConfig: { temperature: opts.temperature ?? 0, responseMimeType: opts.json === false ? 'text/plain' : 'application/json' },
         }),
       });
       if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 200)}`);
@@ -31,11 +32,11 @@ export const PROVIDERS: Record<'gemini' | 'groq', LLMProvider> = {
   },
   groq: {
     id: 'groq', label: 'Groq (free tier)', defaultModel: 'llama-3.3-70b-versatile', keyUrl: 'https://console.groq.com/keys',
-    async call(key, model, system, user, signal) {
+    async call(key, model, system, user, signal, opts = { json: true }) {
       const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST', signal,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+        body: JSON.stringify({ model, temperature: opts.temperature ?? 0, ...(opts.json === false ? {} : { response_format: { type: 'json_object' } }), messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
       });
       if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 200)}`);
       const j = await r.json();
@@ -122,6 +123,22 @@ export async function llmInterpret(text: string, st: State, nowS: string, confli
     const cmd = validateCommand(JSON.parse(json));
     if (!cmd) throw new Error('AI returned an unexpected command');
     return cmd;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Free-form text from the configured provider (used for spoken briefings). */
+export async function llmText(st: State, system: string, user: string, timeoutMs = 12000): Promise<string> {
+  const cfg = st.settings.llm;
+  if (cfg.provider === 'none' || !cfg.key) throw new Error('No AI key set');
+  const prov = PROVIDERS[cfg.provider];
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const out = (await prov.call(cfg.key, cfg.model || prov.defaultModel, system, user, ac.signal, { json: false, temperature: 0.9 })).trim();
+    if (!out) throw new Error('AI returned nothing');
+    return out;
   } finally {
     clearTimeout(t);
   }

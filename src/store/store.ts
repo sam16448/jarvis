@@ -120,11 +120,12 @@ export async function commitQuiet(ops: Op[]) {
   set({ st });
 }
 
-export async function undo() {
+export async function undo(): Promise<string | undefined> {
   if (!state.st) return;
   const r = await repo.undo(state.st);
   const h = await repo.history();
   set({ st: r.state, undoCount: h.length, toast: { text: r.label ? `Undid: ${r.label}` : 'Nothing to undo' } });
+  return r.label;
 }
 
 export async function history() { return repo.history(); }

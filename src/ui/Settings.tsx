@@ -1,5 +1,7 @@
 import { Plus, Trash } from '@phosphor-icons/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { listVoices, speak, ttsSupported } from '../voice/speak';
+import { geocode, round2 } from '../voice/weather';
 import { llmInterpret, PROVIDERS } from '../interpret/llm';
 import { defaultSettings, seedState } from '../engine/seed';
 import { putOp, uid } from '../engine/state';
@@ -95,6 +97,8 @@ export function Settings() {
           </>
         )}
       </section>
+
+      <VoiceSettings />
 
       <section className="card stack" aria-labelledby="s-sleep">
         <h2 id="s-sleep">Sleep</h2>
@@ -195,6 +199,78 @@ export function Settings() {
         <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={e => { const f = e.target.files?.[0]; if (f) doImport(f); e.target.value = ''; }} />
         <button className="btn danger" onClick={async () => { if (confirm('Erase all data and start over with the seed data? Export a backup first if unsure.')) { await replaceAll(seedState()); toast('Reset to defaults.'); } }}>Reset Everything</button>
         <button className="btn ghost" onClick={() => save({ ...defaultSettings(), llm: s.llm })}>Restore Default Settings</button>
+      </section>
+    </>
+  );
+}
+
+function VoiceSettings() {
+  const { st } = useApp();
+  const s = st!.settings;
+  const v = s.voice;
+  const w = s.weather;
+  const save = (patch: Partial<S>) => commit([putOp('settings', { ...s, ...patch })], 'Update settings', false);
+  const setV = (patch: Partial<S['voice']>) => save({ voice: { ...v, ...patch } });
+  const [voices, setVoices] = useState(() => listVoices());
+  const [city, setCity] = useState(w.place);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!ttsSupported()) return;
+    const f = () => setVoices(listVoices());
+    window.speechSynthesis.addEventListener?.('voiceschanged', f);
+    f();
+    return () => window.speechSynthesis.removeEventListener?.('voiceschanged', f);
+  }, []);
+  const findCity = async () => {
+    if (!city.trim()) return;
+    setBusy(true);
+    try { const g = await geocode(city); save({ weather: g }); setCity(g.place); toast(`Weather set to ${g.place}.`); }
+    catch (e) { toast(String((e as Error).message)); }
+    setBusy(false);
+  };
+  const useLocation = () => {
+    if (!navigator.geolocation) { toast('Location is not available here. Type a city instead.'); return; }
+    setBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => { save({ weather: { place: city.trim() || 'your area', lat: round2(pos.coords.latitude), lon: round2(pos.coords.longitude) } }); setBusy(false); toast('Weather location saved.'); },
+      () => { setBusy(false); toast('Location permission denied. Type a city instead.'); },
+      { maximumAge: 3600000, timeout: 10000 },
+    );
+  };
+  const aiReady = s.llm.provider !== 'none' && !!s.llm.key;
+  return (
+    <>
+      <section className="card stack" aria-labelledby="s-voice">
+        <h2 id="s-voice">Voice</h2>
+        <label className="check"><input type="checkbox" checked={v.enabled} onChange={e => setV({ enabled: e.target.checked })} />Jarvis talks back</label>
+        {!ttsSupported() && <p className="small muted">This browser has no speech voices.</p>}
+        <label className="field">Call me
+          <input defaultValue={v.address} placeholder="boss…" autoComplete="off" onBlur={e => setV({ address: e.target.value.trim() || 'boss' })} />
+        </label>
+        <label className="field">Voice
+          <select value={v.voiceURI} onChange={e => setV({ voiceURI: e.target.value })}>
+            <option value="">Automatic (British if available)</option>
+            {voices.map(x => <option key={x.voiceURI} value={x.voiceURI}>{x.name} ({x.lang})</option>)}
+          </select>
+          <span className="hint">More natural voices: iPhone Settings, Accessibility, Spoken Content, Voices, English, then download one (e.g. a British “Enhanced” voice).</span>
+        </label>
+        <label className="field">Speed {v.rate.toFixed(2)}x
+          <input type="range" min={0.8} max={1.3} step={0.05} value={v.rate} onChange={e => setV({ rate: Number(e.target.value) })} />
+        </label>
+        <button className="btn" onClick={() => speak(`At your service, ${v.address || 'boss'}. Shall we get to work?`, { ...v, enabled: true })}>Test Voice</button>
+        <label className="check"><input type="checkbox" checked={v.aiBriefs} onChange={e => setV({ aiBriefs: e.target.checked })} />Witty AI briefings (uses Gemini)</label>
+        <p className="tiny muted">{aiReady ? 'Morning brief and night wrap-up are written by the AI from your real schedule, once a day each.' : 'Add an AI key above to turn these on. Without it, Jarvis reads a standard briefing.'} Quick replies to commands always use built-in phrases so they are instant and offline.</p>
+      </section>
+
+      <section className="card stack" aria-labelledby="s-weather">
+        <h2 id="s-weather">Weather</h2>
+        <p className="small muted">For the morning brief. Uses the free Open-Meteo service; only your city or rounded location is sent.</p>
+        <form className="row" onSubmit={e => { e.preventDefault(); void findCity(); }}>
+          <label className="field grow"><span className="sr-only">City</span><input value={city} onChange={e => setCity(e.target.value)} placeholder="City, e.g. London…" autoComplete="off" /></label>
+          <button className="btn" disabled={busy || !city.trim()}>Set</button>
+        </form>
+        <button className="btn ghost" onClick={useLocation} disabled={busy}>Use My Location</button>
+        {w.lat !== undefined && <p className="tiny muted">Current: {w.place} ({w.lat}, {w.lon}). <button className="btn ghost" style={{ minHeight: 32, padding: '0 8px' }} onClick={() => save({ weather: { place: '' } })}>Clear</button></p>}
       </section>
     </>
   );
