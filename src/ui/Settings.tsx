@@ -200,6 +200,7 @@ export function Settings() {
         <button className="btn danger" onClick={async () => { if (confirm('Erase all data and start over with the seed data? Export a backup first if unsure.')) { await replaceAll(seedState()); toast('Reset to defaults.'); } }}>Reset Everything</button>
         <button className="btn ghost" onClick={() => save({ ...defaultSettings(), llm: s.llm })}>Restore Default Settings</button>
       </section>
+      <p className="tiny faint" style={{ textAlign: 'center' }}>Version {__BUILD__}</p>
     </>
   );
 }
