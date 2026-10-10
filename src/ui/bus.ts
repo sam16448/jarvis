@@ -5,6 +5,8 @@ import type { Command } from '../engine/types';
 import { applyPending, dismiss, getApp, nowStr, propose, resolveLast, showResult, toast, undo, type Pending } from '../store/store';
 import { address, say, sayReply, stopSpeaking } from '../voice';
 import { cancelLine, doneLine, undoLine } from '../voice/persona';
+import { isNo, isYes, micAvailable } from '../voice/listen';
+export { isNo, isYes };
 
 type Sheet =
   | { kind: 'add'; preset?: Partial<AddPreset> }
@@ -15,8 +17,8 @@ type Sheet =
 
 export interface AddPreset { mode: 'task' | 'event' | 'series' | 'block'; date: string; start: string; end: string; cmd?: Command; }
 
-interface Bus { input: string; sheet: Sheet; thinking: boolean; focusSeq: number; }
-let bus: Bus = { input: '', sheet: null, thinking: false, focusSeq: 0 };
+interface Bus { input: string; sheet: Sheet; thinking: boolean; focusSeq: number; listenSeq: number; }
+let bus: Bus = { input: '', sheet: null, thinking: false, focusSeq: 0, listenSeq: 0 };
 const subs = new Set<() => void>();
 const set = (p: Partial<Bus>) => { bus = { ...bus, ...p }; subs.forEach(f => f()); };
 export const useBus = () => useSyncExternalStore(cb => { subs.add(cb); return () => subs.delete(cb); }, () => bus);
@@ -39,7 +41,7 @@ export async function submitText(text: string) {
       if (!conflictOpen) showResult({ type: 'answer', title: 'Nothing to resolve', lines: ['There is no open conflict right now.'] }, text);
       else if (!resolveLast(r.cmd.option)) { toast(`Option ${r.cmd.option} isn't available here. Pick one of the options shown.`); void say(`Option ${r.cmd.option} isn't on the table, ${address()}. Pick one of the others.`); }
       else void say(`Option ${r.cmd.option} it is. Say yes and I'll make it so.`);
-    } else { propose(r.cmd, text.trim(), r.via); sayReply(getApp().pending?.result); }
+    } else { propose(r.cmd, text.trim(), r.via); speakThenListen(); }
     if (r.note) toast(r.note);
   } finally {
     set({ thinking: false });
@@ -52,7 +54,7 @@ export async function answerQuestion(p: Pending, answer: string) {
   if (!st) return;
   const q = p.result.type === 'question' ? p.result : null;
   const merged = q?.partial ? mergeAnswer(q.partial, answer, st, nowStr()) : null;
-  if (merged) { propose(merged, `${p.text ?? ''} / ${answer}`.replace(/^ \/ /, ''), p.via); sayReply(getApp().pending?.result); return; }
+  if (merged) { propose(merged, `${p.text ?? ''} / ${answer}`.replace(/^ \/ /, ''), p.via); speakThenListen(); return; }
   dismiss();
   await submitText(p.text ? `${p.text} ${answer}` : answer);
 }
@@ -63,12 +65,6 @@ export function requestEdit(p: Pending) {
   if (p.cmd) set({ sheet: { kind: 'add', preset: { cmd: p.cmd } } });
 }
 
-const YES = /^\s*(yes|yeah|yep|yup|ok(ay)?|sure|go ahead|do it|apply|confirm|sounds good|perfect|make it so|please do)\b[\s.!,]*(please|boss|jarvis)?[\s.!]*$/i;
-const NO = /^\s*(no|nope|nah|cancel|never ?mind|stop|scrap (it|that)|forget it)\b/i;
-
-export const isYes = (t: string) => t.trim().split(/\s+/).length <= 5 && YES.test(t);
-export const isNo = (t: string) => t.trim().split(/\s+/).length <= 4 && NO.test(t);
-
 /**
  * Spoken/typed reply while a confirmation card is open: "yes" applies, "no" cancels,
  * a conflict answer picks an option, anything else is a new command.
@@ -78,7 +74,7 @@ export async function replyToCard(text: string) {
   const p = app.pending;
   const t = text.trim();
   if (!t) return;
-  if (p && t.split(/\s+/).length <= 5 && YES.test(t)) {
+  if (p && isYes(t)) {
     if (p.result.type === 'proposal') {
       const unresolved = p.result.conflicts.filter(c => !p.choices?.[c.id]);
       if (unresolved.length) { void say(`Which option for ${unresolved[0].title}, ${address()}?`); return; }
@@ -87,7 +83,21 @@ export async function replyToCard(text: string) {
     } else dismiss();
     return;
   }
-  if (p && NO.test(t) && t.split(/\s+/).length <= 4) { dismiss(); stopSpeaking(); void say(cancelLine()); return; }
+  if (p && isNo(t)) { dismiss(); stopSpeaking(); void say(cancelLine()); return; }
   if (p?.result.type === 'question') { await answerQuestion(p, t); return; }
   await submitText(t);
+}
+
+/**
+ * Speak Jarvis's reply; if it asked something (a confirmation card or a question) and
+ * auto-listen is on, open the mic for the answer.
+ */
+export async function speakThenListen() {
+  const p = getApp().pending;
+  if (!p) return;
+  await sayReply(p.result);
+  const st = getApp().st;
+  const still = getApp().pending === p;
+  const asks = p.result.type === 'question' || p.result.type === 'proposal';
+  if (still && asks && st?.settings.voice.enabled && st.settings.voice.autoListen && micAvailable()) set({ listenSeq: bus.listenSeq + 1 });
 }

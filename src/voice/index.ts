@@ -15,8 +15,8 @@ export function say(text: string) {
 
 export const address = () => getApp().st?.settings.voice.address || 'boss';
 
-export function sayReply(r: PlanResult | undefined) {
-  if (r) void say(replyFor(r, address()));
+export function sayReply(r: PlanResult | undefined): Promise<void> {
+  return r ? say(replyFor(r, address())) : Promise.resolve();
 }
 
 let wCache: { key: string; w?: Weather } | null = null;

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Microphone, Stop } from '@phosphor-icons/react';
+import { useEffect, useRef, useState } from 'react';
 import type { ConflictOption, DiffLine } from '../engine/types';
-import { applyPending, dismiss, useApp } from '../store/store';
+import { applyPending, dismiss, toast, useApp } from '../store/store';
 import { Sheet } from './common';
-import { requestEdit, answerQuestion, isNo, isYes, replyToCard } from './bus';
+import { requestEdit, answerQuestion, isNo, isYes, replyToCard, useBus } from './bus';
+import { listenOnce, micAvailable } from '../voice/listen';
 import { address, say, stopSpeaking } from '../voice';
 import { cancelLine, doneLine } from '../voice/persona';
 
@@ -34,6 +36,34 @@ export function ConfirmSheet() {
   const [answer, setAnswer] = useState('');
   const [reply, setReply] = useState('');
   useEffect(() => { setChoices(pending?.choices ?? {}); setReply(''); }, [pending]);
+
+  // voice answers: tap the mic, or Jarvis opens it after asking (auto-listen)
+  const { listenSeq } = useBus();
+  const [listening, setListening] = useState(false);
+  const stopRef = useRef<(() => void) | null>(null);
+  const finalRef = useRef<(t: string) => void>(() => {});
+  const textRef = useRef<(t: string) => void>(() => {});
+  const listen = (auto: boolean) => {
+    if (listening) { stopRef.current?.(); return; }
+    stopSpeaking();
+    setListening(true);
+    stopRef.current = listenOnce({
+      onText: t => textRef.current(t),
+      onDone: t => { setListening(false); if (t) finalRef.current(t); else if (!auto) toast('Didn’t catch that. Tap the mic and try again.'); },
+      onError: code => {
+        setListening(false);
+        if (!auto && code !== 'aborted') toast(code === 'no-speech' ? 'Didn’t hear anything. Tap the mic and speak right away.' : `Mic unavailable (${code}). Type your answer or use the keyboard mic.`);
+      },
+    });
+  };
+  useEffect(() => { if (listenSeq && pending) listen(true); }, [listenSeq]); // eslint-disable-line
+  useEffect(() => () => { stopRef.current?.(); }, [pending]);
+  const mic = micAvailable() ? (
+    <button type="button" className={`mic${listening ? ' on' : ''}`} style={{ width: 44, height: 44 }} aria-label={listening ? 'Stop listening' : 'Answer by voice'} aria-pressed={listening} onClick={() => listen(false)}>
+      {listening ? <Stop size={20} weight="fill" aria-hidden="true" /> : <Microphone size={22} aria-hidden="true" />}
+    </button>
+  ) : null;
+
   if (!pending) return null;
   const r = pending.result;
   const close = () => { setChoices({}); setAnswer(''); stopSpeaking(); dismiss(); };
@@ -53,15 +83,20 @@ export function ConfirmSheet() {
 
   if (r.type === 'question') {
     const submit = () => { if (answer.trim()) { answerQuestion(pending, answer.trim()); setAnswer(''); } };
+    textRef.current = setAnswer;
+    finalRef.current = t => { setAnswer(''); void answerQuestion(pending, t); };
     return (
       <Sheet onClose={close} label="Question">
         {pending.text && <p className="said">“{pending.text}”</p>}
         <h2>{r.question}</h2>
         <form className="stack" onSubmit={e => { e.preventDefault(); submit(); }}>
-          <label className="field">
-            <span className="sr-only">Your answer</span>
-            <input name="answer" value={answer} onChange={e => setAnswer(e.target.value)} placeholder="e.g. Thursday 5 pm…" autoComplete="off" enterKeyHint="send" />
-          </label>
+          <div className="row">
+            <label className="field grow">
+              <span className="sr-only">Your answer</span>
+              <input name="answer" value={answer} onChange={e => setAnswer(e.target.value)} placeholder={listening ? 'Listening…' : 'e.g. Thursday 5 pm…'} autoComplete="off" enterKeyHint="send" />
+            </label>
+            {mic}
+          </div>
           <div className="row">
             <button type="button" className="btn ghost grow" onClick={close}>Cancel</button>
             <button type="submit" className="btn primary grow" disabled={!answer.trim()}>Answer</button>
@@ -89,6 +124,8 @@ export function ConfirmSheet() {
     } else if (isNo(t)) { close(); void say(cancelLine()); }
     else void replyToCard(t);
   };
+  textRef.current = setReply;
+  finalRef.current = t => { setReply(''); onReply(t); };
 
   return (
     <Sheet onClose={close} label="Confirm change">
@@ -118,9 +155,9 @@ export function ConfirmSheet() {
 
       <form className="row" onSubmit={e => { e.preventDefault(); if (reply.trim()) { const t = reply; setReply(''); onReply(t); } }}>
         <label htmlFor="reply" className="sr-only">Reply</label>
-        <input id="reply" className="grow" name="reply" value={reply} onChange={e => setReply(e.target.value)} placeholder={r.conflicts.length ? 'Say an option, e.g. “push my sleep”…' : 'Say “yes”, “no”, or a change…'} autoComplete="off" enterKeyHint="send"
+        <input id="reply" className="grow" name="reply" value={reply} onChange={e => setReply(e.target.value)} placeholder={listening ? 'Listening… say yes, no or a change' : r.conflicts.length ? 'Say an option, e.g. “push my sleep”…' : 'Say “yes”, “no”, or a change…'} autoComplete="off" enterKeyHint="send"
           style={{ minHeight: 44, padding: '0 14px', borderRadius: 22, border: '1px solid var(--line)', background: 'var(--surface)', fontSize: 17 }} />
-        <button className="btn" disabled={!reply.trim()}>Send</button>
+        {reply.trim() || !mic ? <button className="btn" disabled={!reply.trim()}>Send</button> : mic}
       </form>
 
       <section className="stack">

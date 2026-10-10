@@ -133,7 +133,7 @@ export interface Settings {
   wrapupTime: string;
   dailyWorkCapH: number;  // more planned work than this in a day = overloaded
   llm: { provider: 'none' | 'gemini' | 'groq'; key: string; model: string };
-  voice: { enabled: boolean; voiceURI: string; rate: number; address: string; aiBriefs: boolean };
+  voice: { enabled: boolean; voiceURI: string; rate: number; address: string; aiBriefs: boolean; autoListen: boolean };
   weather: { place: string; lat?: number; lon?: number };
 }
 

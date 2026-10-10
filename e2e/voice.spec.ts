@@ -78,7 +78,7 @@ test('morning brief: Gemini writes it, weather included, Jarvis reads it', async
 });
 
 /** Fake speech recognition: either "hears" a phrase or fails with an error. */
-async function fakeRecognition(page: Page, mode: { text: string } | { error: string }) {
+async function fakeRecognition(page: Page, mode: { text: string } | { texts: string[] } | { error: string }) {
   await page.addInitScript((m) => {
     class FakeSR {
       lang = ''; interimResults = false; continuous = false; maxAlternatives = 1;
@@ -86,7 +86,11 @@ async function fakeRecognition(page: Page, mode: { text: string } | { error: str
       start() {
         setTimeout(() => {
           if ('error' in m) { this.onerror?.({ error: m.error }); this.onend?.(); return; }
-          const r = [[{ transcript: m.text }]] as unknown as { isFinal: boolean }[];
+          const w = window as unknown as { __heardIdx?: number };
+          const i = w.__heardIdx = (w.__heardIdx ?? -1) + 1;
+          const text = 'texts' in m ? (m.texts[i] ?? '') : m.text;
+          if (!text) { this.onend?.(); return; }
+          const r = [[{ transcript: text }]] as unknown as { isFinal: boolean }[];
           this.onresult?.({ results: r });
           this.onend?.();
         }, 30);
@@ -114,4 +118,27 @@ test('blocked microphone explains the keyboard mic and hides the button', async 
   await expect(page.getByRole('status')).toContainText('mic on the keyboard');
   await expect(page.getByRole('button', { name: 'Tap to talk' })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Speak or type' })).toBeFocused();
+});
+
+test('hands-free: Jarvis asks, listens, hears "yeah do it" and applies', async ({ page }) => {
+  await recordSpeech(page);
+  await fakeRecognition(page, { texts: ['Add gym at 7 pm today', 'yeah do it'] });
+  await open(page);
+  await page.getByRole('button', { name: 'Tap to talk' }).click();
+  await expect(page.locator('.tl-item', { hasText: 'Gym' })).toHaveCount(1);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(() => said(page)).toMatch(/Done|done|All set|Sorted/);
+});
+
+test('typed natural yes in the card applies', async ({ page }) => {
+  await recordSpeech(page);
+  await open(page);
+  const input = page.getByRole('textbox', { name: 'Speak or type' });
+  await input.fill('Add gym at 7 pm today');
+  await input.press('Enter');
+  const reply = page.getByRole('dialog').getByRole('textbox', { name: 'Reply' });
+  await reply.fill('Yes please go ahead.');
+  await reply.press('Enter');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.tl-item', { hasText: 'Gym' })).toHaveCount(1);
 });
