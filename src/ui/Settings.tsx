@@ -259,6 +259,8 @@ function VoiceSettings() {
           <input type="range" min={0.8} max={1.3} step={0.05} value={v.rate} onChange={e => setV({ rate: Number(e.target.value) })} />
         </label>
         <button className="btn" onClick={() => speak(`At your service, ${v.address || 'boss'}. Shall we get to work?`, { ...v, enabled: true })}>Test Voice</button>
+        <button className="btn ghost" onClick={() => { try { localStorage.removeItem('jarvis-mic-blocked'); } catch { /* ignore */ } location.reload(); }}>Show Mic Button Again</button>
+        <p className="tiny muted">If the round mic button doesn't work on your phone, use the microphone on the iPhone keyboard: tap “Speak or type”, then the keyboard mic.</p>
         <label className="check"><input type="checkbox" checked={v.aiBriefs} onChange={e => setV({ aiBriefs: e.target.checked })} />Witty AI briefings (uses Gemini)</label>
         <p className="tiny muted">{aiReady ? 'Morning brief and night wrap-up are written by the AI from your real schedule, once a day each.' : 'Add an AI key above to turn these on. Without it, Jarvis reads a standard briefing.'} Quick replies to commands always use built-in phrases so they are instant and offline.</p>
       </section>

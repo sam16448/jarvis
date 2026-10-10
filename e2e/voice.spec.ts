@@ -76,3 +76,42 @@ test('morning brief: Gemini writes it, weather included, Jarvis reads it', async
   expect(facts.weather).toMatchObject({ place: 'London', summary: 'rain', highC: 28 });
   await page.screenshot({ path: 'shots/brief-voice.png' });
 });
+
+/** Fake speech recognition: either "hears" a phrase or fails with an error. */
+async function fakeRecognition(page: Page, mode: { text: string } | { error: string }) {
+  await page.addInitScript((m) => {
+    class FakeSR {
+      lang = ''; interimResults = false; continuous = false; maxAlternatives = 1;
+      onresult: ((e: unknown) => void) | null = null; onend: (() => void) | null = null; onerror: ((e: unknown) => void) | null = null; onstart = null;
+      start() {
+        setTimeout(() => {
+          if ('error' in m) { this.onerror?.({ error: m.error }); this.onend?.(); return; }
+          const r = [[{ transcript: m.text }]] as unknown as { isFinal: boolean }[];
+          this.onresult?.({ results: r });
+          this.onend?.();
+        }, 30);
+      }
+      stop() {} abort() {}
+    }
+    (window as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition = FakeSR;
+    (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition = FakeSR;
+  }, mode);
+}
+
+test('tap-to-talk hears a command and sends it', async ({ page }) => {
+  await recordSpeech(page);
+  await fakeRecognition(page, { text: 'Add gym at 7 pm today' });
+  await open(page);
+  await page.getByRole('button', { name: 'Tap to talk' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Gym');
+  await expect.poll(() => said(page)).toMatch(/Shall I go ahead\?/);
+});
+
+test('blocked microphone explains the keyboard mic and hides the button', async ({ page }) => {
+  await fakeRecognition(page, { error: 'service-not-allowed' });
+  await open(page);
+  await page.getByRole('button', { name: 'Tap to talk' }).click();
+  await expect(page.getByRole('status')).toContainText('mic on the keyboard');
+  await expect(page.getByRole('button', { name: 'Tap to talk' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Speak or type' })).toBeFocused();
+});
