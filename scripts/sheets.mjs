@@ -1,0 +1,21 @@
+// Screenshot sheets: add sheet and item sheet.
+import { chromium, devices } from '@playwright/test';
+const base = 'http://127.0.0.1:5173/';
+const iphone = { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } }; delete iphone.defaultBrowserType;
+const browser = await chromium.launch().catch(() => chromium.launch({ channel: 'chrome' }));
+const page = await (await browser.newContext({ ...iphone, colorScheme: 'dark' })).newPage();
+const errs = []; page.on('pageerror', e => errs.push(String(e)));
+await page.goto(`${base}?now=2026-10-12T18:00#/today`);
+await page.getByRole('button', { name: 'Add item' }).click();
+await page.screenshot({ path: 'shots/sheet-add.png' });
+await page.getByLabel('Title').fill('History essay');
+await page.getByRole('button', { name: 'Review' }).click();
+await page.waitForTimeout(200);
+await page.screenshot({ path: 'shots/sheet-confirm.png' });
+await page.getByRole('button', { name: 'Apply' }).click();
+await page.waitForTimeout(300);
+await page.screenshot({ path: 'shots/today-after-add.png' });
+await page.locator('.tl-item', { hasText: 'History essay' }).first().click();
+await page.screenshot({ path: 'shots/sheet-item.png' });
+console.log(errs.join('\n') || 'ok');
+await browser.close();
