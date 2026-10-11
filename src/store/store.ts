@@ -86,9 +86,15 @@ export function showResult(result: PlanResult, text?: string, cmd?: Command, via
 }
 
 /** Re-open the last conflict with an option chosen (from a spoken/typed follow-up). */
-export function resolveLast(option: ConflictOption['key']): boolean {
-  const p = state.lastConflict;
+export function resolveLast(option: ConflictOption['key'], start?: string): boolean {
+  let p = state.lastConflict;
   if (!p || p.result.type !== 'proposal') return false;
+  // a time was given ("add it from 11 pm"): re-plan so option (a) starts then
+  if (start && option === 'a' && p.cmd && state.st) {
+    const result = plan(state.st, p.cmd, nowStr(), { lateStart: start });
+    if (result.type === 'proposal' && result.conflicts.length) { p = { ...p, result, choices: {} }; state = { ...state, lastConflict: p }; }
+  }
+  if (p.result.type !== 'proposal') return false;
   const choices: Record<string, ConflictOption['key']> = { ...(state.pending === p ? p.choices : {}) };
   let any = false;
   for (const c of p.result.conflicts) if (c.options.some(o => o.key === option)) { choices[c.id] = option; any = true; }

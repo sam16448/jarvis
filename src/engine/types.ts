@@ -191,7 +191,7 @@ export type Command =
   | { kind: 'cancel'; target: string; ref?: string; date?: string; scope?: 'one' | 'series' }
   | { kind: 'setPriority'; target: string; ref?: string; priority: Priority }
   | { kind: 'shiftAll'; minutes: number; date?: string }
-  | { kind: 'resolve'; option: 'a' | 'b' | 'c' | 'd' }
+  | { kind: 'resolve'; option: 'a' | 'b' | 'c' | 'd'; start?: string }
   | { kind: 'capture'; text: string }
   | { kind: 'panic' }
   | { kind: 'planStudy'; subject?: string }

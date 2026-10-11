@@ -157,11 +157,12 @@ function buildConflict(base: Draft, sd: Seed, ctx: Ctx, days: string[]): Conflic
     }
   };
 
-  // (a) later today after the block, pushing bedtime if needed
+  // (a) later today after the block, pushing bedtime if needed (at the user's time if they gave one)
   for (const day of days) {
+    if (planOpts.lateStart !== undefined && dateOf(planOpts.lateStart) !== day && dateOf(planOpts.lateStart - DAY) !== day) continue;
     const dr = base.clone();
     const ext = nightAt(day, '03:00');
-    const winFrom = Math.max(from, wakeT(st, day));
+    const winFrom = Math.max(from, wakeT(st, day), planOpts.lateStart ?? -Infinity);
     const until = deadline !== undefined ? Math.min(deadline, ext) : ext;
     if (until <= winFrom) continue;
     const free = freeIntervals(dr.state, winFrom, until, { dayEnd: { [day]: ext } }).filter(([a]) => dateOf(a) === day || a < ext);
@@ -180,7 +181,7 @@ function buildConflict(base: Draft, sd: Seed, ctx: Ctx, days: string[]): Conflic
       if (newBed > hardBedT(st, day)) warnings.push(`That's below your ${st.settings.minSleepH} h minimum sleep and adds ${(st.settings.minSleepH - sleep).toFixed(1)} h of sleep debt.`);
     } else detail += '. Bedtime unchanged.';
     options.push({
-      key: 'a', label: day === dateOf(ctx.now) ? 'Do it later today' + (e > normal - st.settings.bufferMin ? ' and push bedtime' : '') : `Do it ${shortDate(day)}` + (e > normal - st.settings.bufferMin ? ', push bedtime' : ''),
+      key: 'a', label: planOpts.lateStart !== undefined ? `Do it at ${clock(s)}${e > normal - st.settings.bufferMin ? ' and push bedtime' : ''}` : day === dateOf(ctx.now) ? 'Do it later today' + (e > normal - st.settings.bufferMin ? ' and push bedtime' : '') : `Do it ${shortDate(day)}` + (e > normal - st.settings.bufferMin ? ', push bedtime' : ''),
       detail, ops: dr.since(base), diff: optionDiff(base, dr, ctx.now), warnings,
     });
     break;
@@ -896,8 +897,25 @@ export function opsWithChoices(p: Proposal, choices: Record<string, ConflictOpti
 }
 type Op2 = Proposal['ops'][number];
 
+/** Per-call planning options (kept module-local for the duration of one plan() call). */
+let planOpts: { lateStart?: T } = {};
+
+export interface PlanOptions {
+  /** For conflict option (a): start the at-risk item at or after this time ("add it from 11 pm"). */
+  lateStart?: string;
+}
+
 /** Interpret nothing; turn a structured command into a proposal, answer, or question. */
-export function plan(st: State, cmd: Command, nowS: string): PlanResult {
+export function plan(st: State, cmd: Command, nowS: string, opts: PlanOptions = {}): PlanResult {
+  planOpts = { lateStart: opts.lateStart ? toT(opts.lateStart) : undefined };
+  try {
+    return planInner(st, cmd, nowS);
+  } finally {
+    planOpts = {};
+  }
+}
+
+function planInner(st: State, cmd: Command, nowS: string): PlanResult {
   const now = toT(nowS);
   switch (cmd.kind) {
     case 'addTask': return addTask(st, cmd, now);

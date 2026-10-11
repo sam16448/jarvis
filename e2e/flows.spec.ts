@@ -89,3 +89,23 @@ test('night wrap-up: tick done, reschedule the rest', async ({ page }) => {
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(page.getByRole('button', { name: 'Mark Maths numericals not done' })).toBeVisible();
 });
+
+test('clear my evening, then "add it from 11 pm and push my sleep"', async ({ page }) => {
+  await open(page, '2026-10-12T15:00');
+  await say(page, 'Lab record due tomorrow 9 am, takes 90 min');
+  await apply(page);
+  await say(page, 'Clear my evening from 4 to 10 today because of club work');
+  const dlg = page.getByRole('dialog');
+  await expect(dlg).toContainText('Club work');
+  await expect(dlg).toContainText('At risk');
+  await dlg.getByRole('textbox', { name: 'Reply' }).fill('okay add it from 11 pm today and push my sleep today');
+  await dlg.getByRole('textbox', { name: 'Reply' }).press('Enter');
+  await expect(page.locator('.opt[aria-pressed="true"]')).toContainText('Do it at 11:00 pm and push bedtime');
+  await expect(dlg).toContainText('5.8 h sleep');
+  await page.screenshot({ path: 'shots/e2e-evening-11pm.png' });
+  await dlg.getByRole('textbox', { name: 'Reply' }).fill('yes');
+  await dlg.getByRole('textbox', { name: 'Reply' }).press('Enter');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.tl-item', { hasText: 'Lab record' })).toContainText('11:00 pm');
+  await expect(page.locator('.stat', { hasText: 'sleep' })).toContainText('5.8 h');
+});

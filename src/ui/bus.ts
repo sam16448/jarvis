@@ -38,9 +38,18 @@ export async function submitText(text: string) {
     const r = await interpret(text.trim(), st, nowStr(), conflictOpen);
     set({ input: '' });
     if (r.cmd.kind === 'resolve') {
+      const key = r.cmd.option;
       if (!conflictOpen) showResult({ type: 'answer', title: 'Nothing to resolve', lines: ['There is no open conflict right now.'] }, text);
-      else if (!resolveLast(r.cmd.option)) { toast(`Option ${r.cmd.option} isn't available here. Pick one of the options shown.`); void say(`Option ${r.cmd.option} isn't on the table, ${address()}. Pick one of the others.`); }
-      else void say(`Option ${r.cmd.option} it is. Say yes and I'll make it so.`);
+      else if (!resolveLast(key, r.cmd.start)) { toast(`Option ${key} isn't available here. Pick one of the options shown.`); void say(`Option ${key} isn't on the table, ${address()}. Pick one of the others.`); }
+      else {
+        // read back what the chosen option does (new bedtime, sleep hours), then listen for "yes"
+        const res = getApp().pending?.result;
+        const chosen = res?.type === 'proposal' ? res.conflicts.flatMap(c => c.options).find(o => o.key === key) : undefined;
+        void say(`Option ${key} it is. ${chosen ? `${chosen.detail} ${chosen.warnings[0] ?? ''}` : ''} Shall I go ahead?`).then(() => {
+          const s2 = getApp().st;
+          if (getApp().pending && s2?.settings.voice.enabled && s2.settings.voice.autoListen && micAvailable()) set({ listenSeq: bus.listenSeq + 1 });
+        });
+      }
     } else { propose(r.cmd, text.trim(), r.via); speakThenListen(); }
     if (r.note) toast(r.note);
   } finally {

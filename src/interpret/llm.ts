@@ -59,7 +59,7 @@ Now: ${nowS} (${WEEKDAYS[weekday(today)]}). Next days: ${days}.
 Times are local, format "YYYY-MM-DDTHH:mm" (24h). Dates "YYYY-MM-DD". Bare times like "5 to 8" with no am/pm are evening unless "morning".
 Subjects: ${st.settings.subjects.map(s => `${s.name} (${s.aliases.join(', ')})`).join('; ')}.
 Existing items (use these names as "target" when the user refers to them): ${titles.join(' | ') || 'none'}.
-${conflictOpen ? 'A conflict question is open with options a) later today, push bedtime b) shorten the block c) swap with lower-priority item d) drop a flexible item. Replies choosing one -> {"kind":"resolve","option":"a"|"b"|"c"|"d"}.' : ''}
+${conflictOpen ? 'A conflict question is open with options a) later today, push bedtime b) shorten the block c) swap with lower-priority item d) drop a flexible item. Replies choosing one -> {"kind":"resolve","option":"a"|"b"|"c"|"d"}; if they name a time for doing it later today (e.g. "add it from 11 pm and push my sleep") add "start":"YYYY-MM-DDTHH:mm".' : ''}
 Commands (pick exactly one "kind"):
 - addTask {title, subject?, type: ${TASK_TYPES.join('|')}, due: datetime (end of day 23:59 if no time), estimateMin?, priority?: "critical" if graded/zero-if-absent/user says critical}
 - addEvent {title, type?: event|exam|club|personal|study|assignment, subject?, start, end (default 1 hour), priority?}
@@ -102,7 +102,7 @@ export function validateCommand(x: unknown): Command | null {
     case 'logTime': return typeof c.minutes === 'number' && c.minutes > 0 ? c as Command : null;
     case 'query': return ['today', 'next', 'dueWeek', 'studyLeft', 'onTrack', 'free', 'day'].includes(String(c.q)) && opt('date', D) ? c as Command : null;
     case 'shiftAll': return typeof c.minutes === 'number' ? c as Command : null;
-    case 'resolve': return ['a', 'b', 'c', 'd'].includes(String(c.option)) ? c as Command : null;
+    case 'resolve': return ['a', 'b', 'c', 'd'].includes(String(c.option)) && opt('start', DT) ? c as Command : null;
     case 'capture': return str(c.text) ? c as Command : null;
     case 'clarify': return str(c.question) ? c as Command : null;
     case 'panic': return { kind: 'panic' };

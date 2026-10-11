@@ -193,7 +193,15 @@ export function parseRules(raw: string, st: State, nowS: string): RuleResult | n
   // conflict follow-ups
   let m;
   if ((m = s.match(/\boption ([abcd])\b/)) || (m = s.match(/^\s*\(?([abcd])\)?\s*$/))) return hi({ kind: 'resolve', option: m[1] as 'a' });
-  if (/\b(push|move|shift|delay) (my |the )?(sleep|bedtime|bed time)\b|\bafter i (come|get) (home|back)\b|\blater today\b|\bstay up\b/.test(s)) return hi({ kind: 'resolve', option: 'a' });
+  if (/\b(push|move|shift|delay) (my |the )?(sleep|bedtime|bed time)\b|\bafter i (come|get) (home|back)\b|\blater today\b|\bstay up\b/.test(s)) {
+    // "okay add it from 11 pm today and push my sleep": keep the time the user asked for
+    const tt = new Text(raw);
+    const d = takeDate(tt, today) ?? today;
+    const tm = takeTimes(tt, { evening: true });
+    const at = tm.start ?? tm.until;
+    const start = at !== undefined ? (at >= 24 * 60 ? `${addDays(d, 1)}T${fmtHM(at)}` : `${d}T${fmtHM(at)}`) : undefined;
+    return hi(start ? { kind: 'resolve', option: 'a', start } : { kind: 'resolve', option: 'a' });
+  }
   if (/\bshorten (the |my )?(block|it)\b|\bshorter block\b/.test(s)) return hi({ kind: 'resolve', option: 'b' });
   if (/^\s*(ok(ay)?|yes|sure)?,?\s*swap\b/.test(s)) return hi({ kind: 'resolve', option: 'c' });
   if (/^\s*(ok(ay)?|yes|sure)?,?\s*(drop|skip) (it|that|the flexible one)\s*$/.test(s)) return hi({ kind: 'resolve', option: 'd' });
@@ -267,7 +275,7 @@ export function parseRules(raw: string, st: State, nowS: string): RuleResult | n
 
   // ---- block time ----
   if (/\b(clear|block|free up|keep free|i'?m busy|i am busy|i'?ll be busy|i will be busy|hold)\b/.test(s) && /\b(time|till|until|from|to|morning|afternoon|evening|\d)\b/.test(s)) {
-    const reason = s.match(/\b(?:i have|i've got|i got|for|with|because|doing|have)\s+(.+?)(?:\s+(?:till|until|from|today|tomorrow)\b|[,.]|$)/);
+    const reason = s.match(/\b(?:i have|i've got|i got|because of|because i have|because|due to|for|with|doing|have)\s+(.+?)(?:\s+(?:till|until|from|today|tomorrow)\b|[,.]|$)/);
     const date = takeDate(t, today) ?? today;
     const times = takeTimes(t, { ...ctxOf(s), afterMin: date === today ? nowMin : undefined });
     let start: number | undefined = times.start, end: number | undefined = times.end;

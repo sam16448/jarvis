@@ -79,6 +79,16 @@ describe('rule parser: block time & conflicts', () => {
   });
 });
 
+describe('rule parser: evening block with a reason and a timed follow-up', () => {
+  it('clear my evening from 4 to 9 because of club work', () => {
+    expect(p('Clear my evening from 4 to 9 today because of club work', '2026-10-12T15:00')).toMatchObject({ kind: 'blockTime', title: 'Club work', start: '2026-10-12T16:00', end: '2026-10-12T21:00' });
+  });
+  it('okay add it from 11 pm today and push my sleep keeps the time', () => {
+    expect(p('okay add it from 11 pm today and push my sleep today', '2026-10-12T15:00')).toEqual({ kind: 'resolve', option: 'a', start: '2026-10-12T23:00' });
+    expect(p('do it at 11:30 tonight and push my bedtime', '2026-10-12T15:00')).toEqual({ kind: 'resolve', option: 'a', start: '2026-10-12T23:30' });
+  });
+});
+
 describe('rule parser: progress', () => {
   it('done / not done / took', () => {
     expect(p('Done with chem.')).toMatchObject({ kind: 'markDone', target: 'Chem' });

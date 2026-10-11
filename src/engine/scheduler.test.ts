@@ -284,6 +284,27 @@ describe('block time and replanning', () => {
     expect(a.warnings.join(' ')).toMatch(/minimum sleep/);
   });
 
+  it('evening block displaces a submission due tomorrow; option (a) at the time I choose pushes bedtime', () => {
+    let st = base();
+    const now = `${MON}T15:00`;
+    st = apply(st, plan(st, { kind: 'addTask', title: 'Lab record', type: 'lab', due: `${TUE}T09:00`, estimateMin: 90 }, now));
+    const lab = st.tasks[0];
+    expect(chunksOf(st, lab.id)[0].start).toBe(`${MON}T21:00`);
+    const cmd = { kind: 'blockTime' as const, title: 'Club work', start: `${MON}T16:00`, end: `${MON}T22:00` };
+    const p = asProposal(plan(st, cmd, now));
+    expect(p.conflicts).toHaveLength(1);
+    expect(p.conflicts[0].reason).toMatch(/No room for 1h 30m of Lab record/);
+    // user: "add it from 11 pm today and push my sleep"
+    const p2 = asProposal(plan(st, cmd, now, { lateStart: `${MON}T23:00` }));
+    const a = p2.conflicts[0].options.find(o => o.key === 'a')!;
+    expect(a.label).toBe('Do it at 11:00 pm and push bedtime');
+    expect(a.detail).toMatch(/11:00 pm-12:30 am\. Bedtime moves to 12:40 am, giving 5\.8 h sleep/);
+    expect(a.warnings.join(' ')).toMatch(/below your 6\.5 h minimum/);
+    const after = applyOps(st, opsWithChoices(p2, { [p2.conflicts[0].id]: 'a' }));
+    expect(chunksOf(after, lab.id).map(c => c.start)).toEqual([`${MON}T23:00`]);
+    expect(after.days.find(d => d.id === MON)?.bedtime).toBe('00:40');
+  });
+
   it('option (d) drops a flexible item (club) to make room', () => {
     const st = base();
     // fill Monday evening completely so only the club slot could help
